@@ -8,12 +8,16 @@ WANIKANI_MIN_SRS_STAGE = 5  # Guru
 WANIKANI_SRS_STAGES = 9
 
 session = requests.Session()
-session.headers.update({"Authorization": f"Bearer {os.environ['WANIKANI_TOKEN']}"})
 
 
-def get_user(*args, **kwargs):
+def get_user(*args, **kwargs) -> dict:
     url = WANIKANI_BASE_URL + "user"
-    response = session.request("GET", url, *args, **kwargs)
+    response = _make_request(
+        "GET",
+        url,
+        *args,
+        **kwargs,
+    )
     response.raise_for_status()
     return response.json()["data"]
 
@@ -69,9 +73,22 @@ def _paginated_api_request(
     url = WANIKANI_BASE_URL + endpoint
     page_count = 1
     while url and page_count <= max_pages:
-        response = session.request(method, url, *args, **kwargs)
+        response = _make_request(
+            method,
+            url,
+            *args,
+            **kwargs,
+        )
         response.raise_for_status()
         json_data = response.json()
         yield json_data
         url = json_data.get("pages", {}).get("next_url")
         page_count += 1
+
+
+def _make_request(*args, **kwargs) -> requests.Response:
+    session.headers.update({"Authorization": f"Bearer {os.environ['WANIKANI_TOKEN']}"})
+    return session.request(
+        *args,
+        **kwargs,
+    )

@@ -3,10 +3,12 @@ import gradio as gr
 import random
 import asyncio
 import wanikani
-
+from dotenv import load_dotenv
 
 WANIKANI_MIN_SRS_LEVEL = 5
 DEFAULT_MODEL = "gpt-4o-mini"
+
+load_dotenv()
 
 
 def _agent_prompt(learned_vocab):

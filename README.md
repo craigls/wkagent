@@ -10,8 +10,10 @@ Requires a readonly WaniKani API key and an OpenAI API token. Add them to `.env`
 Install and run the code:
 
 ```bash
-pip install -e .
-python wkagent.py
+git clone git@github.com:craigls/wkagent.git
+cd wkagent
+uv venv
+source .venv/bin/activate
+uv run wkagent.py
 ```
-
-Connect to the local Gradio URL provided.
+Open the url in a browser.
