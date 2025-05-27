@@ -11,7 +11,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 load_dotenv()
 
 
-def _agent_prompt(learned_vocab):
+def _agent_prompt(learned_vocab: list[str]) -> str:
     # Shuffling the vocabulary seems to give better results
     shuffled_vocab = random.sample(learned_vocab, k=len(learned_vocab))
 
@@ -36,7 +36,7 @@ def _agent_prompt(learned_vocab):
     return system_prompt
 
 
-def _build_vocabulary(level):
+def _build_vocabulary(level: int) -> list[dict]:
     # Get learned subject ids where type is kanji_vocabulary and SRS stage is "guru"
     subject_ids = [
         assignment["subject_id"]
@@ -52,7 +52,7 @@ def _build_vocabulary(level):
     ]
 
 
-async def main():
+async def main() -> None:
     wanikani_user = wanikani.get_user()
     learned_vocab = _build_vocabulary(wanikani_user["level"])
     run_config = RunConfig(
@@ -66,7 +66,7 @@ async def main():
         ),
     )
 
-    async def chat(message, history):
+    async def chat(message: str, history: list[dict]):
         with trace("Japanese Kanji Learning Agent"):
             prompt = [{"role": h["role"], "content": h["content"]} for h in history] + [
                 {"role": "user", "content": message}
@@ -79,12 +79,12 @@ async def main():
         "Please write start a conversation in Japanese using the vocabulary provided."
     )
     results = [result async for result in chat(initial_message, [])]
-
     # Run Gradio's chat interface
     gr.ChatInterface(
         fn=chat,
         chatbot=gr.Chatbot(
-            type="messages", value=[{"role": "assistant", "content": results[0]}]
+            type="messages",
+            value=[{"role": "assistant", "content": results[0]}],
         ),
         type="messages",
         title="Practice conversation with your Japanese kanji assistant.",
