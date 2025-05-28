@@ -84,7 +84,7 @@ async def main() -> None:
 
     # Make an initial call to the agent and populate the output in the chat interface
     initial_message = (
-        "Please write start a conversation in Japanese using the vocabulary provided."
+        "Please start a conversation in Japanese using the vocabulary provided."
     )
     results = [result async for result in chat(initial_message, [])]
     # Run Gradio's chat interface
