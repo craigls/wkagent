@@ -1,4 +1,6 @@
 from agents import Runner, RunConfig, Agent, trace
+from openai.types.responses import ResponseTextDeltaEvent
+
 import gradio as gr
 import random
 import asyncio
@@ -71,8 +73,14 @@ async def main() -> None:
             prompt = [{"role": h["role"], "content": h["content"]} for h in history] + [
                 {"role": "user", "content": message}
             ]
-            result = await Runner.run(agent, input=prompt, run_config=run_config)
-            yield result.final_output
+            result = Runner.run_streamed(agent, input=prompt, run_config=run_config)
+            buffer = ""
+            async for event in result.stream_events():
+                if event.type == "raw_response_event" and isinstance(
+                    event.data, ResponseTextDeltaEvent
+                ):
+                    buffer += event.data.delta
+                    yield buffer
 
     # Make an initial call to the agent and populate the output in the chat interface
     initial_message = (
