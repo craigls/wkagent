@@ -10,10 +10,10 @@ Requires a readonly WaniKani API key and an OpenAI API token. Add them to `.env`
 Install and run the code:
 
 ```bash
-git clone git@github.com:craigls/wkagent.git
-cd wkagent
+git clone git@github.com:craigls/wkbot.git
+cd wkbot
 uv venv
 source .venv/bin/activate
-uv run wkagent.py
+uv run wkbot.py
 ```
 Open the url in a browser.

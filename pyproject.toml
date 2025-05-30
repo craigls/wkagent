@@ -1,5 +1,5 @@
 [project]
-name = "wkagent"
+name = "wkbot"
 version = "0.1.0"
 description = "Japanese Kanji Learning Assistant"
 readme = "README.md"
