@@ -1,19 +1,25 @@
-from agents import Runner, RunConfig, Agent, trace
-from openai.types.responses import ResponseTextDeltaEvent
-
+import types
 import gradio as gr
 import random
 import asyncio
 import wanikani
 from dotenv import load_dotenv
+from typing import AsyncGenerator
+import openai
 
-WANIKANI_MIN_SRS_LEVEL = 5
-DEFAULT_MODEL = "gpt-4o-mini"
+WANIKANI_MIN_SRS_STAGE = 5  # Gur
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 load_dotenv()
 
+state = types.SimpleNamespace(
+    wanikani_user=None,
+    wanikani_vocab=[],
+    openai_client=None,
+)
 
-def _agent_prompt(learned_vocab: list[str]) -> str:
+
+def _create_prompt(learned_vocab: list[dict]) -> str:
     # Shuffling the vocabulary seems to give better results
     shuffled_vocab = random.sample(learned_vocab, k=len(learned_vocab))
 
@@ -23,80 +29,110 @@ def _agent_prompt(learned_vocab: list[str]) -> str:
         You should create complex sentences by randomly selecting words from the list.
         After the student responds, give a brief reply, then add additional sentences using randomly selected words from the list. 
         Continue this loop indefinitely. 
-        You should not use English unless the student asks for an explanation in English, or when you are correcting a student's grammar.
-        You should give concise corrections only.
-        Do not explain the vocabulary unless asked.
-
+        You should not use English unless asked, or when you are correcting a student's grammar.
+        You should give concise corrections only, and provide hiragana pronunciations when correcting.
+        
         Here is a comma-separated vocabulary of words to use:
 
-        {",".join(shuffled_vocab)}
+        {",".join([word["characters"] for word in shuffled_vocab])}
         
         Use as many words from the provided vocabulary list as possible, as the primary goal is kanji exposure.
         Do not use words outside of this list, as the student won't be able to understand them.
         However, using very basic words is OK, and these words should be written using hiragana only.
+
+        Please start a conversation using the vocabulary list.
     """
     return system_prompt
 
 
-def _build_vocabulary(level: int) -> list[dict]:
-    # Get learned subject ids where type is kanji_vocabulary and SRS stage is "guru"
-    subject_ids = [
-        assignment["subject_id"]
-        for (assignment_id, assignment) in wanikani.get_assignments(
-            srs_stage=WANIKANI_MIN_SRS_LEVEL
+async def _start_conversation() -> None:
+    # Weird hack to send the system prompt and set the response in the chatbot
+    initial = [
+        message
+        async for message in chat(
+            [{"role": "system", "content": _create_prompt(state.wanikani_vocab)}]
         )
-    ]
-    # Get vocabulary up to and including <level> then filter out words that haven't been learned yet.
-    return [
-        kanji
-        for (subject_id, kanji) in wanikani.get_subjects(level=level)
-        if subject_id in subject_ids and kanji["characters"]
-    ]
+    ][0]
+    return (gr.update(value=initial), gr.update(interactive=True))
+
+
+def _load_wanikani_data() -> list[dict]:
+    # TODO: What happens if user hasn't learned any words yet?
+    try:
+        # Pull data from WaniKani API
+        state.wanikani_user = wanikani.get_user()
+
+        # Get learned subject ids where type is kanji_vocabulary and SRS stage is "guru"
+        subject_ids = [
+            assignment["subject_id"]
+            for (assignment_id, assignment) in wanikani.get_assignments(
+                srs_stage=WANIKANI_MIN_SRS_STAGE
+            )
+        ]
+
+        # Get vocabulary up to and including <level> then filter out words that haven't been learned yet.
+        state.wanikani_vocab = [
+            subject
+            for (subject_id, subject) in wanikani.get_subjects(
+                level=state.wanikani_user["level"]
+            )
+            if subject_id in subject_ids and subject["characters"]
+        ]
+    except Exception as e:
+        gr.Error(f"Error loading WaniKani data: {e}")
+
+    success = f"Success! {len(state.wanikani_vocab)} vocabulary words loaded. Your current WaniKani level is: {state.wanikani_user['level']}"
+    return gr.update(value=success, interactive=True)
+
+
+async def chat(history: list[dict[str, str]]) -> AsyncGenerator[str, None]:
+    try:
+        stream = await state.openai_client.chat.completions.create(
+            model=DEFAULT_OPENAI_MODEL,
+            messages=history,
+            stream=True,
+        )
+        history.append({"role": "assistant", "content": ""})
+
+        async for chunk in stream:
+            if chunk.choices[0].delta.content is not None:
+                history[-1]["content"] += chunk.choices[0].delta.content
+                yield history
+    except Exception as e:
+        raise gr.Error(f"Error with chatbot: {e}")
 
 
 async def main() -> None:
-    wanikani_user = wanikani.get_user()
-    learned_vocab = _build_vocabulary(wanikani_user["level"])
-    run_config = RunConfig(
-        model=DEFAULT_MODEL,
-    )
+    state.openai_client = openai.AsyncOpenAI()
 
-    agent = Agent(
-        name="Japanese Kanji Learning Agent",
-        instructions=_agent_prompt(
-            learned_vocab=[word["characters"] for word in learned_vocab]
-        ),
-    )
+    def user_input(message, history: list):
+        return ("", history + [{"role": "user", "content": message}])
 
-    async def chat(message: str, history: list[dict]):
-        with trace("Japanese Kanji Learning Agent"):
-            prompt = [{"role": h["role"], "content": h["content"]} for h in history] + [
-                {"role": "user", "content": message}
-            ]
-            result = Runner.run_streamed(agent, input=prompt, run_config=run_config)
-            buffer = ""
-            async for event in result.stream_events():
-                if event.type == "raw_response_event" and isinstance(
-                    event.data, ResponseTextDeltaEvent
-                ):
-                    buffer += event.data.delta
-                    yield buffer
-
-    # Make an initial call to the agent and populate the output in the chat interface
-    initial_message = (
-        "Please start a conversation in Japanese using the vocabulary provided."
-    )
-    results = [result async for result in chat(initial_message, [])]
     # Run Gradio's chat interface
-    gr.ChatInterface(
-        fn=chat,
-        chatbot=gr.Chatbot(
+    with gr.Blocks() as app:
+        gr.Markdown(
+            """
+            # Japanese Kanji Learning Assistant
+            ## 日本の漢字学習アシスタント
+            """
+        )
+        submit = gr.Button("Load your WaniKani data")
+        chatbot = gr.Chatbot(
             type="messages",
-            value=[{"role": "assistant", "content": results[0]}],
-        ),
-        type="messages",
-        title="Practice conversation with your Japanese kanji assistant.",
-    ).launch()
+        )
+
+        text = gr.Textbox(label="Write your message here:", interactive=False)
+        text.submit(user_input, inputs=[text, chatbot], outputs=[text, chatbot]).then(
+            chat, inputs=chatbot, outputs=chatbot
+        )
+        submit.click(
+            lambda: gr.update(interactive=False, value="Loading..."),
+            outputs=submit,
+        ).then(_load_wanikani_data, outputs=submit).then(
+            _start_conversation, outputs=[chatbot, text]
+        )
+
+    app.launch()
 
 
 if __name__ == "__main__":

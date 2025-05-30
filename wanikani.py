@@ -4,7 +4,6 @@ import os
 import sys
 
 WANIKANI_BASE_URL = "https://api.wanikani.com/v2/"
-WANIKANI_MIN_SRS_STAGE = 5  # Guru
 WANIKANI_SRS_STAGES = 9
 
 session = requests.Session()
@@ -41,10 +40,10 @@ def get_subjects(
 
 
 def get_assignments(
+    srs_stage,
     subject_type="kanji_vocabulary",
     level=None,
     cumulative=True,
-    srs_stage=WANIKANI_MIN_SRS_STAGE,
     max_pages=sys.maxsize,
 ) -> Generator[tuple[int, dict], None, None]:
     params = {
