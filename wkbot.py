@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from typing import AsyncGenerator
 import openai
 
-WANIKANI_MIN_SRS_STAGE = 5  # Gur
+WANIKANI_MIN_SRS_STAGE = 5  # Guru
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 load_dotenv()
